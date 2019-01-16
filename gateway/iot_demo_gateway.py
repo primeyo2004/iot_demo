@@ -40,6 +40,10 @@ I2C_BUS            = 1
 TC74_I2C_ADDRESS   = 0x4a
 TC74_READ_INTERVAL = 3000
 
+ITAG_IMMEDIATE_ALERT_SERVICE = "00001802-0000-1000-8000-00805f9b34fb"
+ITAG_ALERT_LEVEL_CHRC        = "00002a06-0000-1000-8000-00805f9b34fb"
+
+
 
 #   IOT_ORGANIZATION = ""
 #   IOT_GATEWAYTYPE  = ""
@@ -60,6 +64,9 @@ class SimpleGatewayImpl:
     IOT_EVENT_READING        = "reading"
     IOT_EVENT_CURRENT_STATE  = "current_state"
     IOT_CMD_NEW_STATE        = "new_state"
+
+
+
  
     def __init__(self, temp_sensor, itag_device, iot_gateway):
         self.sensorDevice   = temp_sensor
@@ -92,9 +99,16 @@ class SimpleGatewayImpl:
     def __PublishSensorCallback(self):
         print('Publish temperature reading successful!')
 
+    def __PublishActuatorStateCallback(self):
+        print('Publish ITAG Alert level successful!')
+
+
+
     def __ActuatorCommandHandler(self,command):
         print("Id = %s (of type = %s) received the device command %s at %s" % (command.id, command.type, command.data, command.timestamp))
-        print("Setting ITAG Alarm to: ", command.data['alarm'])
+        print("Setting ITAG  Alert Level value to: ", command.data['alarm'])
+        self.actuatorDevice.WriteValue([int(command.data['alarm'])] ,reply_handler=self.__ItagWriteValueCallback, error_handler=self.__generic_error_cb)
+
 
     def __PublishActuatorCallback(self):
         print('Publish actuator successful!')
@@ -102,12 +116,23 @@ class SimpleGatewayImpl:
     def __ItagReadValueCallback(self, value):
         if len(value) > 0:
             stateData = {'alarm' : value[0]}
-            self.iotGateway.publishDeviceEvent(self.IOT_DEVICE_ACTUATOR_TYPE, self.IOT_DEVICE_ACTUATOR_ID, self.IOT_EVENT_CURRENT_STATE, "json", stateData, qos=1, on_publish=self.__PublishActuatorCallback)
+            print("Publishing new ITAG Alert Level value = ", value[0])
+            self.iotGateway.publishDeviceEvent(self.IOT_DEVICE_ACTUATOR_TYPE, self.IOT_DEVICE_ACTUATOR_ID, self.IOT_EVENT_CURRENT_STATE, "json", stateData, qos=1, on_publish=self.__PublishActuatorStateCallback)
+
     def __ItagWriteValueCallback(self):
-        # read the new ITAG value here
-        pass
+        print("ITAG  Alert Level value succesfully set.")
+        self.actuatorDevice.ReadValue(reply_handler=self.__ItagReadValueCallback, error_handler=self.__generic_error_cb)
+
+    def __generic_error_cb(self, error):
+        print('D-Bus call failed: ' + str(error))
 
 
+
+def filter_connected_itag (dev):
+    if dev.Name == 'ITAG':
+        if dev.Connected:
+            return True
+    return False
 
 
 
@@ -129,7 +154,7 @@ def main():
 
     # Initialize the TC74 temperature sensor
     try:
-        sensorDevice = tc74.create_TC74Sensor('TC74SensorDummy',I2C_BUS,TC74_I2C_ADDRESS)
+        sensorDevice = tc74.create_TC74Sensor('TC74SensorImpl',I2C_BUS,TC74_I2C_ADDRESS)
     except Exception as ex:
         if type(ex) == OSError and ex.errno == 121:
             print('Failed to initialize TC74 sensor',file=sys.stderr) 
@@ -139,10 +164,21 @@ def main():
            
 
     # Fetch the ITAG BLE Alarm
-    #bleclient.FetchDevices(bus, my_cb)
-    #if len(bluezdevs) == 0:
-    #    print ('Unable to find the connected ITAG device.',file=sys.stderr)
-    #    sys.exit(1) 
+    bluezdevs = bleclient.FetchDevices(bus, filter_connected_itag)
+    if len(bluezdevs) == 0:
+        print ('Unable to find the connected ITAG device.',file=sys.stderr)
+        sys.exit(1) 
+
+    bleService = bluezdevs[0].GetService(ITAG_IMMEDIATE_ALERT_SERVICE)
+    if bleService is None:
+        print ('Unable to find Immediate Alert service in the conncted ITAG device.',file=sys.stderr)
+        sys.exit(1) 
+
+
+    actuatorDevice = bleService.GetCharactristic(ITAG_ALERT_LEVEL_CHRC)
+    if actuatorDevice is None:
+        print ('Unable to find Alert Level characteristic in Immediate Alert service in the conncted ITAG device.',file=sys.stderr)
+        sys.exit(1) 
 
 
     # Connect to IBM Watson IOT Platform

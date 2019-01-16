@@ -52,8 +52,9 @@ class SimpleControlApplicationImpl:
     IOT_EVENT_READING        = "reading"
     IOT_EVENT_CURRENT_STATE  = "current_state"
     IOT_CMD_NEW_STATE        = "new_state"
-    TEMPERATURE_THRESHOLD_1  = 10
-    TEMPERATURE_THRESHOLD_2  = 20 
+
+    TEMPERATURE_THRESHOLD_1  = 40 
+    TEMPERATURE_THRESHOLD_2  = 45 
 
 
     def __init__(self, iotApp):
