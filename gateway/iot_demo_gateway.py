@@ -1,21 +1,21 @@
+#!/usr/bin/env python3
 #   Simple IOT demo in Linux
 #   Copyright (C) 2019  Jeune Prime M. Origines <primeyo2004@yahoo.com>
-
+#
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
 #   the Free Software Foundation; either version 2 of the License, or
 #   (at your option) any later version.
-
+#
 #   This program is distributed in the hope that it will be useful,
 #   but WITHOUT ANY WARRANTY; without even the implied warranty of
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
-
+#
 #   You should have received a copy of the GNU General Public License along
 #   with this program; if not, write to the Free Software Foundation, Inc.,
 #   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-#!/usr/bin/env python3
 
 import bleclient
 import tc74
@@ -39,13 +39,13 @@ except ImportError:
 I2C_BUS            = 1
 TC74_I2C_ADDRESS   = 0x4a
 TC74_READ_INTERVAL = 3000
-
+ #
 ITAG_IMMEDIATE_ALERT_SERVICE = "00001802-0000-1000-8000-00805f9b34fb"
 ITAG_ALERT_LEVEL_CHRC        = "00002a06-0000-1000-8000-00805f9b34fb"
 
 
 
-#   IOT_ORGANIZATION = ""
+  IOT_ORGANIZATION = ""
 #   IOT_GATEWAYTYPE  = ""
 #   IOT_GATEWAYID    = ""
 #   IOT_AUTHMETHOD   = ""
@@ -72,12 +72,15 @@ class SimpleGatewayImpl:
         self.sensorDevice   = temp_sensor
         self.actuatorDevice = itag_device
         self.iotGateway     = iot_gateway
+        self.alarmValue     = 0
 
     def Start(self):
-        stateData = {'alarm' : 0}
-        self.iotGateway.publishDeviceEvent(self.IOT_DEVICE_ACTUATOR_TYPE, self.IOT_DEVICE_ACTUATOR_ID, self.IOT_EVENT_CURRENT_STATE, "json", stateData, qos=1, on_publish=self.__PublishActuatorCallback)
+        self.__ItagWriteValueCallback()
+        self.iotGateway.subscribeToDeviceCommands(deviceType=self.IOT_DEVICE_ACTUATOR_TYPE, 
+                deviceId=self.IOT_DEVICE_ACTUATOR_ID, 
+                command=self.IOT_CMD_NEW_STATE,
+                format='json',qos=2)
 
-        self.iotGateway.subscribeToDeviceCommands(deviceType=self.IOT_DEVICE_ACTUATOR_TYPE, deviceId=self.IOT_DEVICE_ACTUATOR_ID, command=self.IOT_CMD_NEW_STATE,format='json',qos=2)
         self.iotGateway.deviceCommandCallback = self.__ActuatorCommandHandler
 
         GObject.timeout_add(TC74_READ_INTERVAL,self.__SensorReadHandler)
@@ -89,7 +92,11 @@ class SimpleGatewayImpl:
         print ('Publishing temperature reading.')
 
         readingData = {'temperature' : value}
-        deviceSuccess = self.iotGateway.publishDeviceEvent(self.IOT_DEVICE_SENSOR_TYPE, self.IOT_DEVICE_SENSOR_ID, self.IOT_EVENT_READING, "json", readingData, qos=1, on_publish=self.__PublishSensorCallback)
+        deviceSuccess = self.iotGateway.publishDeviceEvent(self.IOT_DEVICE_SENSOR_TYPE, 
+                self.IOT_DEVICE_SENSOR_ID, 
+                self.IOT_EVENT_READING, "json", 
+                readingData, qos=1, 
+                on_publish=self.__PublishSensorCallback)
         
         if not deviceSuccess:
             print("Gateway not connected to IBM Watson IoT Platform while publishing from Gateway on behalf of a device")
@@ -102,26 +109,30 @@ class SimpleGatewayImpl:
     def __PublishActuatorStateCallback(self):
         print('Publish ITAG Alert level successful!')
 
-
-
     def __ActuatorCommandHandler(self,command):
         print("Id = %s (of type = %s) received the device command %s at %s" % (command.id, command.type, command.data, command.timestamp))
         print("Setting ITAG  Alert Level value to: ", command.data['alarm'])
-        self.actuatorDevice.WriteValue([int(command.data['alarm'])] ,reply_handler=self.__ItagWriteValueCallback, error_handler=self.__generic_error_cb)
+        self.alarmValue = int(command.data['alarm']) 
+        self.actuatorDevice.WriteValue([self.alarmValue] ,
+                reply_handler=self.__ItagWriteValueCallback, 
+                error_handler=self.__generic_error_cb)
 
 
     def __PublishActuatorCallback(self):
         print('Publish actuator successful!')
 
-    def __ItagReadValueCallback(self, value):
-        if len(value) > 0:
-            stateData = {'alarm' : value[0]}
-            print("Publishing new ITAG Alert Level value = ", value[0])
-            self.iotGateway.publishDeviceEvent(self.IOT_DEVICE_ACTUATOR_TYPE, self.IOT_DEVICE_ACTUATOR_ID, self.IOT_EVENT_CURRENT_STATE, "json", stateData, qos=1, on_publish=self.__PublishActuatorStateCallback)
-
     def __ItagWriteValueCallback(self):
         print("ITAG  Alert Level value succesfully set.")
-        self.actuatorDevice.ReadValue(reply_handler=self.__ItagReadValueCallback, error_handler=self.__generic_error_cb)
+        stateData = {'alarm' : self.alarmValue}
+        print("Publishing new ITAG Alert Level value = ", self.alarmValue)
+        self.iotGateway.publishDeviceEvent(self.IOT_DEVICE_ACTUATOR_TYPE, 
+                self.IOT_DEVICE_ACTUATOR_ID, 
+                self.IOT_EVENT_CURRENT_STATE, 
+                "json", 
+                stateData,
+                qos=1, 
+                on_publish=self.__PublishActuatorStateCallback)
+
 
     def __generic_error_cb(self, error):
         print('D-Bus call failed: ' + str(error))

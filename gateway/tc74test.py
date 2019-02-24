@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 #   Simple IOT demo in Linux
 #   Copyright (C) 2019  Jeune Prime M. Origines <primeyo2004@yahoo.com>
 
@@ -15,13 +16,12 @@
 #   with this program; if not, write to the Free Software Foundation, Inc.,
 #   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-#!/usr/bin/env python3
 
 import tc74
 
 
 def main():
-    sensor = tc74.create_TC74Sensor('TC74SensorDummy',1,0x4a)
+    sensor = tc74.create_TC74Sensor('TC74SensorImpl',1,0x4a)
     print (sensor.read())
 
 if __name__ == '__main__':
